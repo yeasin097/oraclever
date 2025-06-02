@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: gvenzl/oracle-free:latest
+    container_name: oracle-db
+    environment:
+      ORACLE_PASSWORD: lab_password
+      APP_USER: lab_user
+      APP_USER_PASSWORD: lab_password
+      ORACLE_DATABASE: FREE
+    ports:
+      - "1521:1521"
+      - "5500:5500"
+    volumes:
+      - ./database/init.sql:/container-entrypoint-initdb.d/init.sql
+      - oracle_db_data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "sqlplus", "sys/lab_password@localhost:1521/FREEPDB1", "as", "sysdba", "<<EOF\nSELECT 1 FROM DUAL;\nEXIT;\nEOF"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: always
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: node-oracle-backend
+    ports:
+      - "5000:5000"
+    environment:
+      DB_USER: C##LAB_USER
+      DB_PASSWORD: lab_password
+      DB_CONNECT_STRING: db:1521/FREEPDB1
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: react-frontend
+    ports:
+      - "5173:5173" # <--- CHANGED: Expose Vite's default dev server port
+    depends_on:
+      backend:
+        condition: service_started
+    restart: always
+
+volumes:
+  oracle_db_data:
